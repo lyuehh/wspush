@@ -2,10 +2,12 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"code.google.com/p/go.net/websocket"
 	"fmt"
-	"github.com/astaxie/beego/config"
 	"github.com/ulricqin/goutils/filetool"
+	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -15,7 +17,6 @@ import (
 )
 
 var cfgFile = "/etc/guacamole/guacamole.properties"
-var Config config.ConfigContainer
 var BaseLogDir string
 
 func ReadLog(ws *websocket.Conn) {
@@ -81,7 +82,7 @@ func ReadLog(ws *websocket.Conn) {
 		var line []byte
 		for {
 			line, _, err = reader.ReadLine()
-			if err == os.EOF {
+			if err == io.EOF {
 				break
 			} else {
 				if err = websocket.Message.Send(ws, string(line)); err != nil {
@@ -95,15 +96,35 @@ func ReadLog(ws *websocket.Conn) {
 }
 
 func main() {
-	fmt.Println("reading configuration file...")
-	var err error
-	Config, err = config.NewConfig("ini", "/etc/guacamole/guacamole.properties")
-	if err != nil {
-		fmt.Println("configuration file[/etc/guacamole/guacamole.properties] cannot parse.")
+	fmt.Printf("reading configuration file: %s...\n", cfgFile)
+	if !filetool.IsExist(cfgFile) {
+		fmt.Printf("configuration file[%s] is not exists.\n", cfgFile)
 		os.Exit(1)
 	}
 
-	BaseLogDir = Config.String("message-storage")
+	contents, err := ioutil.ReadFile(cfgFile)
+	if err != nil {
+		fmt.Printf("read %s fail.\n", cfgFile)
+		os.Exit(1)
+	}
+
+	reader := bufio.NewReader(bytes.NewBuffer(contents))
+	for {
+		line, _, err := reader.ReadLine()
+		if err == io.EOF {
+			break
+		}
+
+		li := string(line)
+		if strings.Index(li, "message-storage:") < 0 && strings.Index(li, "message-storage :") < 0 {
+			continue
+		}
+
+		tmp := li[strings.Index(li, ":")+1:]
+		BaseLogDir = strings.Trim(tmp, " ")
+		break
+	}
+
 	if BaseLogDir == "" {
 		fmt.Println("no configuration item: message-storage")
 		os.Exit(1)
